@@ -4,17 +4,20 @@ const http = require('http');
 const url = require('url');
 const StringDecoder = require('string_decoder').StringDecoder;
 const config = require("./config");
+const validKey = require('./keys').validKey;
 
 
-/*  MAIN HANDLER */
+/*   */
+
 const unifiedServer = (req, res) => {
 	let parsedURL = url.parse(req.url, true);
 	let path = parsedURL.pathname;
 	let trimmedPath = path.replace(/^\/+|\/+$/g, '');
-	let method = req.method.toLowerCase();
-	let headers = req.headers;
-	let decoder = new StringDecoder("utf-8");
 	let buffer = "";
+	const method = req.method.toLowerCase();
+	const queryString = parsedURL.query;
+	const key = queryString['key'];
+	const decoder = new StringDecoder("utf-8");
 
 	req.on('data', (data) => {
 		buffer += decoder.write(data);
@@ -22,25 +25,27 @@ const unifiedServer = (req, res) => {
 	req.on('end', () => {
 		buffer += decoder.end();
 
-		/* At this the processing of the request is completed */
-
-		// BUILDING RESPONSE
-		if (method == 'post') {
-				choosenHandler((statusCode, payload) => {
-				statusCode = typeof(statusCode) == 'number' ? statusCode : 200;
-				payload = typeof(payload) == 'object' ? payload : {'message': 'Wrong Destination @ 404'};
+		if (method == 'post' && validKey(key)) {
+			console.log(trimmedPath)
+			let choosenHandler = trimmedPath in router ? router[trimmedPath] : handler.notFound;
+			console.log(choosenHandler);
+			choosenHandler((statusCode, payload) => {
+				payload = typeof(payload) == 'object' ? payload : {'error': 'Wrong Destination @ 404'};
 				let payloadString = JSON.stringify(payload);
 				res.setHeader('Content-Type', 'application/json');
 				res.writeHead(statusCode);
 				res.end(payloadString)
 			});
 		} else {
-			let msg = {
-				'message': 'This API is only for POST request on path @ /hello'
-			};
-			msg = JSON.stringify(msg)
 			res.setHeader('Content-Type', 'application/json');
 			res.writeHead(404);
+			let msg = {
+				'warning': 'This API is only for POST request on path @ /hello',
+			};
+			if (!validKey(key)) {
+				msg.error = `The key passed ${key} is not valid...`
+			}
+			msg = JSON.stringify(msg)
 			res.end(msg);
 		}
 	});
@@ -60,7 +65,13 @@ server.listen(config.port, () => {
 /* ROUTING AND HANDLERS  */
 let handler = {};
 handler.hello = (callback) => {
-	callback(200, {'Welcome': 'Just an simple Hello World API'});;
+	let message = {
+		'welcome': 'This is just simple Hellp world API',
+		'message': 'Hello World',
+		'warning': "",
+		'error': ""
+	}
+	callback(200, message);;
 };
 
 handler.notFound = (callback) => {
